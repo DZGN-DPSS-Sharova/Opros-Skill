@@ -133,6 +133,8 @@ const SKIP_TO_9 = ['Пробовал(а), но больше не пользую�
 const OTHER = 'Свой вариант';
 
 const Q = [
+  {id:'q0',type:'single',title:'Из какой вы команды?',
+   opts:['ЦКИИ','СберБуст','Сбер БПМ','Лин-лаб и Гемба','ВНД'],other:true,otherLabel:'Другое',otherPh:'Напишите вашу команду'},
   {id:'q1',type:'single',req:true,title:'Как часто вы пользуетесь скиллом?',
    opts:['Несколько раз в неделю','Раз в неделю','Несколько раз в месяц','Реже раза в месяц','Пробовал(а), но больше не пользуюсь','Не пользовался(-ась)'],
    follow:{when:SKIP_TO_9,id:'q1_why',label:'Расскажите, что помешало'}},
@@ -197,6 +199,7 @@ function render(){
   if(q.type==='matrix') body = matrixHTML(q);
   if(q.type==='likert') body = likertHTML(q);
   if(q.type==='nps')    body = npsHTML(q);
+  if(q.type==='short')  body = `<input type="text" id="${q.id}" data-t="${q.id}" maxlength="120" autocomplete="off" placeholder="Название команды" value="${esc(A[q.id]||'')}">`;
   if(q.type==='text')   body = `<textarea id="${q.id}" data-t="${q.id}" rows="5" placeholder="Напишите, чего не хватает и/или что требует улучшений">${esc(A[q.id]||'')}</textarea>`;
   const isLast = step === TOTAL-1;
   card.innerHTML = `
@@ -223,6 +226,7 @@ function hintFor(q){
   if(q.type==='matrix') return r+'по одному ответу в каждой строке';
   if(q.type==='likert') return r+'1 — полностью не согласен(-на), 3 — нейтрально, 5 — полностью согласен(-на)';
   if(q.type==='nps')    return r+'0 — точно не порекомендую, 10 — обязательно порекомендую';
+  if(q.type==='short')  return r+'коротко, одной строкой';
   return 'Необязательный вопрос · свободный ответ';
 }
 
@@ -236,8 +240,8 @@ function optsHTML(q,multi){
   const has = v => multi ? sel.includes(v) : sel===v;
   let h = '<div class="opts">';
   for(const o of shuffled(q)) h += optRow(q,o,multi,has(o));
-  if(q.other) h += optRow(q,OTHER,multi,has(OTHER),'Свой вариант');
-  if(has(OTHER)) h += `<input type="text" id="${q.id}_other" data-t="${q.id}_other" placeholder="Ваш вариант" value="${esc(A[q.id+'_other']||'')}">`;
+  if(q.other) h += optRow(q,OTHER,multi,has(OTHER),q.otherLabel||'Свой вариант');
+  if(has(OTHER)) h += `<input type="text" id="${q.id}_other" data-t="${q.id}_other" placeholder="${esc(q.otherPh||'Ваш вариант')}" value="${esc(A[q.id+'_other']||'')}">`;
   if(q.exclusive){ h += '<div class="sep"></div>' + optRow(q,q.exclusive,multi,has(q.exclusive)); }
   h += '</div>';
   if(q.follow && q.follow.when.includes(A[q.id])) h += textField(q.follow.id,q.follow.label);
@@ -303,6 +307,7 @@ function bind(){
   }));
   document.getElementById('back').onclick = back;
   document.getElementById('next').onclick = next;
+  card.querySelectorAll('input[type=text][data-t]').forEach(t=> t.addEventListener('keydown',e=>{ if(e.key==='Enter'){ e.preventDefault(); next(); } }));
 }
 function keepFocusRender(sel){
   const y = window.scrollY; render(); window.scrollTo(0,y);
@@ -344,7 +349,7 @@ function clean(){
   const out = {};
   const skipped = SKIP_TO_9.includes(A.q1);
   for(const q of Q){
-    if(skipped && !['q1','q9'].includes(q.id)) continue;
+    if(skipped && !['q0','q1','q9'].includes(q.id)) continue;
     const keys = [q.id, q.id+'_other', q.id+'_comment', q.follow&&q.follow.id, q.extra&&q.extra.id].filter(Boolean);
     for(const k of keys){
       let v = A[k];
@@ -363,8 +368,8 @@ function rowPairs(a){
   for(const q of Q){
     const n = Q.indexOf(q)+1;
     if(q.type==='matrix'||q.type==='likert') q.rows.forEach((r,i)=>p.push([n+'. '+r, a[q.id]&&a[q.id]['r'+i]!==undefined ? (a[q.id]['r'+i]==='na'?'Не могу оценить':a[q.id]['r'+i]) : '']));
-    else p.push([n+'. '+q.title, Array.isArray(a[q.id]) ? a[q.id].join(' | ') : (a[q.id]!==undefined?a[q.id]:'')]);
-    if(q.other) p.push([n+'. Свой вариант', a[q.id+'_other']||'']);
+    else p.push([n+'. '+q.title, Array.isArray(a[q.id]) ? a[q.id].join(' | ') : (a[q.id]===OTHER&&q.otherLabel?q.otherLabel:(a[q.id]!==undefined?a[q.id]:''))]);
+    if(q.other) p.push([n+'. '+(q.otherLabel||'Свой вариант'), a[q.id+'_other']||'']);
     if(q.comment) p.push([n+'. Комментарий', a[q.id+'_comment']||'']);
     if(q.follow) p.push([n+'. '+q.follow.label, a[q.follow.id]||'']);
     if(q.extra) p.push([n+'. '+q.extra.label, a[q.extra.id]||'']);
@@ -400,7 +405,7 @@ function renderIntro(closed){
       <p class="lead">Некоторое время назад мы поделились ДПСС-китом — шаблоном и дизайн-системой для презентаций через Claude. Хотим честно понять, насколько он помогает в работе и что в нём улучшить.</p>
       <p class="muted">По итогам доработаем скилл и расскажем, что изменилось.</p>
     </div>
-    <div class="facts"><span class="chip">Анонимно</span><span class="chip">9 вопросов · около 3 минут</span></div>
+    <div class="facts"><span class="chip">Анонимно</span><span class="chip">10 вопросов · около 3 минут</span></div>
     ${closed ? '<p class="note">Опрос завершён. Спасибо всем, кто ответил!</p>'
       : already ? '<p class="note">Вы уже прошли опрос с этого устройства — спасибо! Если хотите дополнить ответ, можно заполнить его ещё раз.</p>' : ''}
     ${closed?'':`<div class="nav"><span class="sp"></span><button class="btn pri" id="start" type="button">${already?'Заполнить ещё раз':'Начать'}</button></div>`}`;
